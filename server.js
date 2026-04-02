@@ -1,29 +1,22 @@
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
+require('dotenv').config();
 
 const app = express();
-const port = 5000;
 
 mongoose
   .connect(
-    "mongodb+srv://csaifw21006:Csaifw21006%40@cluster0.pkftbsg.mongodb.net/taskDB?appName=Cluster0",
+    process.env.MONGO_URI
   )
   .then(() => console.log("DB CONNECTED"))
   .catch((err) => console.log(err));
-
-const mockSuggestion = [
-  "Learn React deeply",
-  "Build a portfolio project",
-  "Practice DSA for 1 hour",
-  "Revise JavaScript concepts",
-  "Work on system design basics",
-];
 
 app.use(cors());
 app.use(express.json());
 
 app.use("/tasks", require("./src/routes/taskRoute"));
+app.use("",require("./src/routes/authRoute"))
 
 app.use((err, req, res, next) => {
   console.log(err);
@@ -33,4 +26,4 @@ app.use((err, req, res, next) => {
     message: err.message || "something went wrong",
   });
 });
-app.listen(port, () => console.log("App is listening "));
+app.listen(process.env.PORT, () => console.log("App is listening "));
