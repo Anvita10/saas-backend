@@ -17,6 +17,7 @@ app.use(express.json());
 
 app.use("", require("./src/routes/taskRoute"));
 app.use("",require("./src/routes/authRoute"))
+app.use("/workspaces",require("./src/routes/workspaceRoute"))
 
 app.use((err, req, res, next) => {
   console.log(err);

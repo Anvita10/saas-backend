@@ -1,10 +1,11 @@
 const express = require("express");
 const router = express.Router();
 
-const {createWorkspace,addUserInWorkspace}=require("../controllers/workSpaceController")
+const {createWorkspace,addUserInWorkspace}=require("../controllers/workSpaceController");
+const authMiddleware = require("../middleware/authMiddleware");
 
-router.post("/workspaces",createWorkspace)
-router.post("/workspaces/:workspaceId/members",addUserInWorkspace)
+router.post("",authMiddleware,createWorkspace)
+router.post("/:workspaceId/members",authMiddleware,addUserInWorkspace)
 
 
 module.exports=router
