@@ -8,7 +8,6 @@ const taskSchema = mongoose.Schema(
     },
     description: {
       type: String,
-      required: true,
     },
     status: {
       type: String,
@@ -37,7 +36,7 @@ const taskSchema = mongoose.Schema(
     },
     category: {
       type: String,
-      required: true,
+      // required: true,
       enum: [
         "Tech",
         "Fitness",

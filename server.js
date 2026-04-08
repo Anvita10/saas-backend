@@ -15,7 +15,7 @@ mongoose
 app.use(cors());
 app.use(express.json());
 
-app.use("/tasks", require("./src/routes/taskRoute"));
+app.use("", require("./src/routes/taskRoute"));
 app.use("",require("./src/routes/authRoute"))
 
 app.use((err, req, res, next) => {
