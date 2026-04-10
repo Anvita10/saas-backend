@@ -5,11 +5,13 @@ const {
   createWorkspace,
   addUserInWorkspace,
   getMyAllWorkspace,
+  getWorkspaceDetails,
 } = require("../controllers/workSpaceController");
 const authMiddleware = require("../middleware/authMiddleware");
 
 router.post("", authMiddleware, createWorkspace);
 router.get("", authMiddleware, getMyAllWorkspace);
-router.post("/:workspaceId/members", authMiddleware, addUserInWorkspace);
+router.get("/:workspaceId", authMiddleware, getWorkspaceDetails);
+router.patch("/:workspaceId/members", authMiddleware, addUserInWorkspace);
 
 module.exports = router;
