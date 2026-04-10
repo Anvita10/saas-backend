@@ -1,6 +1,8 @@
 const { success, error } = require("../utils/response");
 const User = require("../models/Users");
 const Workspace = require("../models/Workspace");
+const Task = require("../models/Task");
+const { getWorkspaceAndCheckMember } = require("../utils/workspace");
 
 exports.createWorkspace = async (req, res, next) => {
   const { name, members } = req.body;
@@ -85,54 +87,34 @@ exports.addUserInWorkspace = async (req, res, next) => {
       return error(res, "User does not have access to add members", 403);
     }
 
-    // ✅ STEP 1: Clean + validate new members
-    let uniqueNewMembers = [];
+    let newMemberIds = [];
 
     if (newMembers && newMembers.length > 0) {
-      const uniqueMap = new Map();
-      const newMemberIds = new Set();
-
       for (const val of newMembers) {
-        if (!val.userId) {
+        if (!val.userId || !val.role) {
           return error(res, "Invalid member object", 400);
         }
-
-        const key = val.userId.toString();
-
-        uniqueMap.set(key, val); // removes duplicates
-        newMemberIds.add(key);
+        const userId = val.userId.toString();
+        const isAlreadyExist = workspace.members.some(
+          (x) => x.userId.toString() === userId,
+        );
+        if (isAlreadyExist || newMemberIds.includes(userId))
+          return error(res, `Duplicate ${userId}`, 400);
+        newMemberIds.push(userId);
       }
-
-      const users = await User.find({
-        _id: { $in: Array.from(newMemberIds) },
-      });
-
-      if (users.length !== newMemberIds.size) {
-        return error(res, "Some users do not exist", 404);
-      }
-
-      uniqueNewMembers = Array.from(uniqueMap.values());
     }
 
-    // ✅ STEP 2: Remove already existing members
-    const existingUserIds = new Set(
-      workspace.members.map((val) => val.userId.toString()),
-    );
+    const isValidUser = await User.find({
+      _id: { $in: Array.from(newMemberIds) },
+    });
+    if (isValidUser.length !== newMemberIds.length)
+      return error(res, "The user are not valid", 401);
 
-    const filteredNewMembers = uniqueNewMembers.filter(
-      (val) => !existingUserIds.has(val.userId.toString()),
-    );
+    const allMembers = [...workspace.members, ...newMembers];
 
-    // ✅ FINAL MERGE
-    const updatedMembers = [...workspace.members, ...filteredNewMembers];
+    await Workspace.findByIdAndUpdate(workspaceId, { members: allMembers });
 
-    const updatedWorkspace = await Workspace.findByIdAndUpdate(
-      workspaceId,
-      { members: updatedMembers },
-      { new: true },
-    );
-
-    return success(res, updatedWorkspace, 200);
+    return success(res, newMembers, 200);
   } catch (err) {
     next(err);
   }
@@ -182,3 +164,51 @@ exports.getMyAllWorkspace = async (req, res, next) => {
     next(err);
   }
 };
+
+exports.getWorkspaceDetails = async (req, res, next) => {
+  const userId = req.user.id;
+  const { workspaceId } = req.params;
+
+  try {
+    const { workspace, error: wsError } = await getWorkspaceAndCheckMember(
+      workspaceId,
+      userId,
+      { populateMembers: true, populateOwner: true },
+    );
+
+    if (wsError) return error(res, wsError.message, wsError.status);
+
+    // getting the task stats for the workspace
+    const stats = await Task.aggregate([
+      { $match: { workspace: workspaceId } },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const formatedStats = {
+      total: 0,
+    };
+
+    stats.forEach((item) => {
+      formatedStats[item._id] = item.count;
+      formatedStats.total += item.count;
+    });
+
+    // limiting the task list to be 5 high priority task
+    const recentTasks = await Task.find({ workspace: workspaceId })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select("title status priority dueDate");
+
+    const finalData = { workspace, formatedStats, recentTasks };
+    return success(res, finalData, 200);
+  } catch (err) {
+    next(err);
+  }
+};
+
+
