@@ -3,6 +3,7 @@ const User = require("../models/Users");
 const Workspace = require("../models/Workspace");
 const Task = require("../models/Task");
 const { getWorkspaceAndCheckMember } = require("../utils/workspace");
+const mongoose = require("mongoose");
 
 exports.createWorkspace = async (req, res, next) => {
   const { name, members } = req.body;
@@ -76,45 +77,72 @@ exports.addUserInWorkspace = async (req, res, next) => {
       return error(res, wsError.message, wsError.status);
     }
 
+    // 🔐 permission check
     const hasPermission =
       workspace.owner.toString() === currentUserId ||
       workspace.members.some(
         (val) =>
-          val.userId.toString() === currentUserId && val.role !== "member",
+          val.userId.toString() === currentUserId && val.role === "admin",
       );
 
     if (!hasPermission) {
       return error(res, "User does not have access to add members", 403);
     }
 
-    let newMemberIds = [];
+    let resolvedMembers = [];
 
-    if (newMembers && newMembers.length > 0) {
-      for (const val of newMembers) {
-        if (!val.userId || !val.role) {
-          return error(res, "Invalid member object", 400);
-        }
-        const userId = val.userId.toString();
-        const isAlreadyExist = workspace.members.some(
-          (x) => x.userId.toString() === userId,
-        );
-        if (isAlreadyExist || newMemberIds.includes(userId))
-          return error(res, `Duplicate ${userId}`, 400);
-        newMemberIds.push(userId);
-      }
+    if (!newMembers || newMembers.length === 0) {
+      return error(res, "No members provided", 400);
     }
 
-    const isValidUser = await User.find({
-      _id: { $in: Array.from(newMemberIds) },
+    for (const member of newMembers) {
+      const { email, role } = member;
+
+      if (!email || !role) {
+        return error(res, "Invalid member object", 400);
+      }
+
+      // 🔍 find user by email
+      const user = await User.findOne({ email });
+
+      if (!user) {
+        return error(res, `User not found: ${email}`, 404);
+      }
+
+      const userId = user._id.toString();
+
+      // ❌ duplicate check (existing workspace members)
+      const alreadyExists = workspace.members.some(
+        (m) => m.userId.toString() === userId,
+      );
+
+      if (alreadyExists) {
+        return error(res, `User already in workspace: ${email}`, 400);
+      }
+
+      // ❌ duplicate in same request
+      const duplicateInRequest = resolvedMembers.some(
+        (m) => m.userId === userId,
+      );
+
+      if (duplicateInRequest) {
+        return error(res, `Duplicate in request: ${email}`, 400);
+      }
+
+      resolvedMembers.push({
+        userId,
+        role,
+      });
+    }
+
+    // ✅ merge properly
+    const updatedMembers = [...workspace.members, ...resolvedMembers];
+
+    await Workspace.findByIdAndUpdate(workspaceId, {
+      members: updatedMembers,
     });
-    if (isValidUser.length !== newMemberIds.length)
-      return error(res, "The user are not valid", 401);
 
-    const allMembers = [...workspace.members, ...newMembers];
-
-    await Workspace.findByIdAndUpdate(workspaceId, { members: allMembers });
-
-    return success(res, newMembers, 200);
+    return success(res, resolvedMembers, 200);
   } catch (err) {
     next(err);
   }
@@ -128,6 +156,7 @@ exports.getWorkspaceUsers = async (req, res, next) => {
     const { workspace, error: wsError } = await getWorkspaceAndCheckMember(
       workspaceId,
       userId,
+      { populateMembers: true },
     );
 
     if (wsError) {
@@ -156,6 +185,7 @@ exports.getMyAllWorkspace = async (req, res, next) => {
     const formattedData = list.map((val) => ({
       id: val._id,
       wsName: val.name,
+      memberCount: val.members.length,
       role: val.members.find((x) => x.userId.toString() === userId)?.role,
     }));
 
@@ -180,7 +210,7 @@ exports.getWorkspaceDetails = async (req, res, next) => {
 
     // getting the task stats for the workspace
     const stats = await Task.aggregate([
-      { $match: { workspace: workspaceId } },
+      { $match: { workspace: new mongoose.Types.ObjectId(workspaceId) } },
       {
         $group: {
           _id: "$status",
@@ -211,4 +241,66 @@ exports.getWorkspaceDetails = async (req, res, next) => {
   }
 };
 
+exports.deleteWorkspace = async (req, res, next) => {
+  const userId = req.user.id;
+  const { workspaceId } = req.params;
+
+  try {
+    const workspace = await Workspace.findById(workspaceId);
+
+    if (!workspace) {
+      return error(res, "Workspace not found", 404);
+    }
+
+    const isOwner = workspace.owner.toString() === userId;
+
+    if (!isOwner) {
+      return error(res, "You are not allowed to delete this workspace", 403);
+    }
+
+    await Task.deleteMany({ workspace: workspaceId });
+    await Workspace.findByIdAndDelete(workspaceId);
+    return res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.removeMember = async (req, res, next) => {
+  const userId = req.user.id;
+  const { workspaceId } = req.params;
+  const { userId: deleteId } = req.body;
+
+  try {
+    const { workspace, error: wsError } = await getWorkspaceAndCheckMember(
+      workspaceId,
+      userId,
+    );
+
+    if (wsError) return error(res, wsError.message, wsError.status);
+
+    if (userId !== workspace.owner.toString())
+      return error(res, "You are not authorized to delete members", 403);
+    if (deleteId === workspace.owner.toString())
+      return error(res, "Owner cannot be removed", 403);
+
+    const isMember = workspace.members.some(
+      (val) => val.userId.toString() === deleteId,
+    );
+
+    if (!isMember) return error(res, "No such member exist", 400);
+
+    // remove member from workspace
+    workspace.members = workspace.members.filter(
+      (val) => val.userId.toString() !== deleteId,
+    );
+    await workspace.save();
+
+    await Task.updateMany({ assignedTo: deleteId }, { assignedTo: userId });
+    await Task.updateMany({ assignedBy: deleteId }, { assignedBy: userId });
+    return success(res, workspace, 200);
+  } catch (err) {
+    next(err);
+  }
+};
 
