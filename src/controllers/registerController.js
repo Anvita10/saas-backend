@@ -14,7 +14,7 @@ exports.register = async (req, res, next) => {
       password: hashedPassword,
       phoneNo,
     });
-    return success(res, user, 201);
+    return success(res, user, 201, "SignUp successful");
   } catch (err) {
     next(err);
   }
@@ -38,8 +38,9 @@ exports.login = async (req, res, next) => {
       expiresIn: "2h",
     });
 
-    success(res, { token, username: user.name }, 200);
+    success(res, { token, username: user.name }, 200, "Login Successful");
   } catch (err) {
     next(err);
   }
 };
+
