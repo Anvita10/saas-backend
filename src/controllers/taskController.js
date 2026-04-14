@@ -84,7 +84,7 @@ exports.createTask = async (req, res, next) => {
       workspace: workspaceId,
     });
     await task.save();
-    return success(res, task, 201);
+    return success(res, task, 201, "Task created successfully");
   } catch (err) {
     next(err);
   }
@@ -169,7 +169,7 @@ exports.updateTask = async (req, res, next) => {
       new: true,
       runValidators: true,
     });
-    return success(res, updatedTask);
+    return success(res, updatedTask, "Update is Done");
   } catch (err) {
     next(err);
   }
