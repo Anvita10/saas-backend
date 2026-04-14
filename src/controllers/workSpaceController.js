@@ -3,7 +3,7 @@ const Workspace = require("../models/Workspace");
 const Task = require("../models/Task");
 const { getWorkspaceAndCheckMember } = require("../utils/workspace");
 const mongoose = require("mongoose");
-const { resolveMembers } = require("../utils/member");
+const { resolveMembers } = require("../utils/resolveMembers");
 
 exports.createWorkspace = async (req, res, next) => {
   const { name, members } = req.body;
@@ -267,3 +267,4 @@ exports.removeMember = async (req, res, next) => {
     next(err);
   }
 };
+
