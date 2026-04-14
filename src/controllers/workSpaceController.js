@@ -1,9 +1,9 @@
 const { success, error } = require("../utils/response");
-const User = require("../models/Users");
 const Workspace = require("../models/Workspace");
 const Task = require("../models/Task");
 const { getWorkspaceAndCheckMember } = require("../utils/workspace");
 const mongoose = require("mongoose");
+const { resolveMembers } = require("../utils/member");
 
 exports.createWorkspace = async (req, res, next) => {
   const { name, members } = req.body;
@@ -13,7 +13,6 @@ exports.createWorkspace = async (req, res, next) => {
   const normalizedName = name.trim();
 
   try {
-    let resolvedMembers = [];
     const workspaceExist = await Workspace.findOne({
       name: normalizedName,
       owner: currentUserId,
@@ -21,42 +20,40 @@ exports.createWorkspace = async (req, res, next) => {
     if (workspaceExist)
       return error(res, "Workspace with same name already exist", 400);
 
-    if (members && members.length > 0) {
-      for (const val of members) {
-        if (!val.email || !val.role) {
-          return error(res, "Invalid member object", 400);
-        }
+    const { resolvedMembers, error: memberError } = await resolveMembers(
+      members || [],
+    );
 
-        const user = await User.findOne({ email: val.email }).select("_id");
-        if (!user) {
-          return error(res, `User not found: ${val.email}`, 404);
-        }
-        resolvedMembers.push({
-          userId: user._id,
-          role: val.role,
-        });
-      }
+    if (memberError) {
+      return error(res, memberError.message, memberError.status);
     }
 
-    // To remove the duplicate members
-    const allMembers = [
-      ...(resolvedMembers || []),
-      { userId: currentUserId, role: "owner" },
-    ];
+    const ownerIndex = resolvedMembers.findIndex(
+      (m) => m.userId.toString() === currentUserId,
+    );
 
-    const uniqueMembersMap = new Map();
+    let allMembers;
 
-    for (const m of allMembers) {
-      uniqueMembersMap.set(m.userId?.toString(), m);
+    if (ownerIndex !== -1) {
+      // override role to owner
+      resolvedMembers[ownerIndex] = {
+        userId: currentUserId,
+        role: "owner",
+      };
+      allMembers = resolvedMembers;
+    } else {
+      allMembers = [
+        ...resolvedMembers,
+        { userId: currentUserId, role: "owner" },
+      ];
     }
 
-    const cleanMembers = Array.from(uniqueMembersMap.values());
     const data = await Workspace.create({
       name: normalizedName,
-      members: cleanMembers,
+      members: allMembers,
       owner: currentUserId,
     });
-    return success(res, data, 201);
+    return success(res, data, 201, "Workspace created successfully");
   } catch (err) {
     next(err);
   }
@@ -89,50 +86,17 @@ exports.addUserInWorkspace = async (req, res, next) => {
       return error(res, "User does not have access to add members", 403);
     }
 
-    let resolvedMembers = [];
-
     if (!newMembers || newMembers.length === 0) {
       return error(res, "No members provided", 400);
     }
 
-    for (const member of newMembers) {
-      const { email, role } = member;
+    const { resolvedMembers, error: memberError } = await resolveMembers(
+      newMembers,
+      workspace.members,
+    );
 
-      if (!email || !role) {
-        return error(res, "Invalid member object", 400);
-      }
-
-      // 🔍 find user by email
-      const user = await User.findOne({ email });
-
-      if (!user) {
-        return error(res, `User not found: ${email}`, 404);
-      }
-
-      const userId = user._id.toString();
-
-      // ❌ duplicate check (existing workspace members)
-      const alreadyExists = workspace.members.some(
-        (m) => m.userId.toString() === userId,
-      );
-
-      if (alreadyExists) {
-        return error(res, `User already in workspace: ${email}`, 400);
-      }
-
-      // ❌ duplicate in same request
-      const duplicateInRequest = resolvedMembers.some(
-        (m) => m.userId === userId,
-      );
-
-      if (duplicateInRequest) {
-        return error(res, `Duplicate in request: ${email}`, 400);
-      }
-
-      resolvedMembers.push({
-        userId,
-        role,
-      });
+    if (memberError) {
+      return error(res, memberError.message, memberError.status);
     }
 
     // ✅ merge properly
@@ -142,7 +106,7 @@ exports.addUserInWorkspace = async (req, res, next) => {
       members: updatedMembers,
     });
 
-    return success(res, resolvedMembers, 200);
+    return success(res, resolvedMembers, 200, "Member added successfully");
   } catch (err) {
     next(err);
   }
@@ -303,4 +267,3 @@ exports.removeMember = async (req, res, next) => {
     next(err);
   }
 };
-
