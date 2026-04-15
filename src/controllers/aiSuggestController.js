@@ -1,33 +1,40 @@
-exports.getAiSuggestion = async (req, res) => {
-  const { category } = req.body;
-  const suggestionsMap = {
-    Tech: [
-      "Build a React mini project",
-      "Learn useEffect deeply",
-      "Revise JavaScript closures",
-    ],
-    Fitness: [
-      "Do 20 pushups",
-      "Go for a 30 min walk",
-      "Stretch for 15 minutes",
-    ],
-    Learning: ["Read 10 pages of a book", "Watch a coding tutorial"],
-    Productivity: [
-      "Plan your day",
-      "Clean your workspace",
-      "Write tomorrow's goals",
-    ],
-    Personal: ["Call a friend", "Journal your thoughts"],
-    Fun: ["Watch a movie", "Listen to music"],
-    Career: [
-      "Update resume",
-      "Apply to 5 jobs",
-      "Practice interview questions",
-    ],
-  };
+const Task = require("../models/Task");
+const { success, error } = require("../utils/response");
+const { deriveStats, generateInsights } = require("../utils/analytics");
+const { getWorkspaceAndCheckMember } = require("../utils/workspace");
 
-  const list = suggestionsMap[category] || ["Do something meaningful"];
+exports.getAiSuggestion = async (req, res, next) => {
+  const currentUserId = req.user.id;
+  const { workspaceId } = req.params;
 
-  const random = list[Math.floor(Math.random() * list.length)];
-  res.json({ suggestion: random });
+  try {
+    const { workspace, error: wsError } = await getWorkspaceAndCheckMember(
+      workspaceId,
+      currentUserId,
+    );
+
+    if (wsError) {
+      return error(res, wsError.message, wsError.status);
+    }
+
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const tasks = await Task.find({
+      workspace: workspaceId,
+      createdAt: { $gte: sevenDaysAgo },
+    });
+
+    const analytics = deriveStats(tasks);
+    const insights = generateInsights(analytics);
+
+    return success(
+      res,
+      { analytics, insights },
+      200,
+      "Analysis generated successfully",
+    );
+  } catch (err) {
+    next(err);
+  }
 };
