@@ -45,3 +45,40 @@ exports.PHRASES = {
     "💡 Suggestion: Improve planning to reduce unnecessary work.",
   ],
 };
+
+exports.TREND_PHRASES = {
+  completion: {
+    up: [
+      "🚀 Completion rate improved compared to last week.",
+      "📈 Team is closing more tasks than before.",
+    ],
+    down: [
+      "📉 Completion rate dropped compared to last week.",
+      "⚠️ Fewer tasks are being completed this week.",
+    ],
+    stable: ["⚖️ Completion rate is stable compared to last week."],
+  },
+
+  workload: {
+    up: [
+      "⚠️ Workload has increased this week.",
+      "📊 More tasks are active compared to last week.",
+    ],
+    down: [
+      "✅ Workload has reduced compared to last week.",
+      "📉 Fewer active tasks this week.",
+    ],
+  },
+
+  overdue: {
+    up: ["🚨 Overdue tasks increased — deadlines slipping."],
+    down: ["🟢 Overdue tasks reduced — better deadline control."],
+    stable: ["⚖️ Overdue tasks are stable."],
+  },
+
+  momentum: {
+    positive: ["🔥 Team momentum is improving week over week."],
+    negative: ["🧊 Momentum slowdown detected this week."],
+  },
+};
+
