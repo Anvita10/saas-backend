@@ -1,4 +1,4 @@
-const { PHRASES } = require("../data/data");
+const { PHRASES, TREND_PHRASES } = require("../data/data");
 
 const STATUS_Category = {
   DONE: ["Completed"],
@@ -138,3 +138,88 @@ exports.generateInsights = (analytics) => {
 
   return finalInsights;
 };
+
+exports.generateTrendInsights = (week1, week2) => {
+  const insights = [];
+
+  if (!week1 || !week2) {
+    return ["ℹ️ Not enough data for trend analysis."];
+  }
+
+  // 📈 Completion Rate Trend
+  const completionDiff = week2.completionRate - week1.completionRate;
+
+  if (completionDiff > 5) {
+    insights.push({
+      text: pickRandom(TREND_PHRASES.completion.up),
+      priority: 3,
+    });
+  } else if (completionDiff < -5) {
+    insights.push({
+      text: pickRandom(TREND_PHRASES.completion.down),
+      priority: 3,
+    });
+  } else {
+    insights.push({
+      text: pickRandom(TREND_PHRASES.completion.stable),
+      priority: 1,
+    });
+  }
+
+  // ⚖️ Workload Trend
+  const workloadDiff = week2.activeTasks - week1.activeTasks;
+
+  if (workloadDiff > 0) {
+    insights.push({
+      text: pickRandom(TREND_PHRASES.workload.up),
+      priority: 2,
+    });
+  } else if (workloadDiff < 0) {
+    insights.push({
+      text: pickRandom(TREND_PHRASES.workload.down),
+      priority: 1,
+    });
+  }
+
+  // 🚨 Overdue Trend
+  const overdueDiff = week2.overdueTasks - week1.overdueTasks;
+
+  if (overdueDiff > 0) {
+    insights.push({
+      text: pickRandom(TREND_PHRASES.overdue.up),
+      priority: 3,
+    });
+  } else if (overdueDiff < 0) {
+    insights.push({
+      text: pickRandom(TREND_PHRASES.overdue.down),
+      priority: 2,
+    });
+  } else {
+    insights.push({
+      text: pickRandom(TREND_PHRASES.overdue.stable),
+      priority: 1,
+    });
+  }
+
+  // 🔥 Momentum (derived logic)
+  const momentumScore =
+    completionDiff * 2 + workloadDiff * -1 + overdueDiff * -2;
+
+  if (momentumScore > 5) {
+    insights.push({
+      text: pickRandom(TREND_PHRASES.momentum.positive),
+      priority: 3,
+    });
+  } else if (momentumScore < 0) {
+    insights.push({
+      text: pickRandom(TREND_PHRASES.momentum.negative),
+      priority: 2,
+    });
+  }
+
+  return insights
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, 3)
+    .map((i) => i.text);
+};
+
