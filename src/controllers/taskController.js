@@ -169,7 +169,7 @@ exports.updateTask = async (req, res, next) => {
       new: true,
       runValidators: true,
     });
-    return success(res, updatedTask, "Update is Done");
+    return success(res, updatedTask, 200, "Update is Done");
   } catch (err) {
     next(err);
   }
